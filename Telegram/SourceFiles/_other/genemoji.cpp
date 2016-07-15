@@ -16,7 +16,7 @@ In addition, as a special exception, the copyright holders give permission
 to link the code of portions of this program with the OpenSSL library.
 
 Full license: https://github.com/telegramdesktop/tdesktop/blob/master/LICENSE
-Copyright (c) 2014-2015 John Preston, https://desktop.telegram.org
+Copyright (c) 2014-2016 John Preston, https://desktop.telegram.org
 */
 #include "genemoji.h"
 
@@ -1942,9 +1942,9 @@ In addition, as a special exception, the copyright holders give permission\n\
 to link the code of portions of this program with the OpenSSL library.\n\
 \n\
 Full license: https://github.com/telegramdesktop/tdesktop/blob/master/LICENSE\n\
-Copyright (c) 2014-2015 John Preston, https://desktop.telegram.org\n\
+Copyright (c) 2014-2016 John Preston, https://desktop.telegram.org\n\
 */\n";
-			tcpp << "#include \"stdafx.h\"\n#include \"gui/emoji_config.h\"\n\n";
+			tcpp << "#include \"stdafx.h\"\n#include \"ui/emoji_config.h\"\n\n";
 
 			tcpp << "namespace {\n"; // namespace with data
 			tcpp << "\tEmojiData *emojis = 0;\n";
