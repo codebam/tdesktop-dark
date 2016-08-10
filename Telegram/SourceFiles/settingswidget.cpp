@@ -399,6 +399,7 @@ void SettingsInner::paintEvent(QPaintEvent *e) {
 		// profile
 		top += st::setTop;
 
+		p.setPen(st::windowTextFg);
 		_nameText.drawElided(p, _uploadPhoto.x() + st::setNameLeft, top + st::setNameTop, _uploadPhoto.width() - st::setNameLeft);
 		if (!_cancelPhoto.isHidden()) {
 			p.setFont(st::linkFont->f);
@@ -849,16 +850,10 @@ void SettingsInner::keyPressEvent(QKeyEvent *e) {
 			connect(box.get(), SIGNAL(confirmed()), this, SLOT(onSwitchModerateMode()));
 			Ui::showLayer(box.release());
 			break;
-		} else if (str == qstr("clearstickers")) {
-			auto box = std_::make_unique<ConfirmBox>(qsl("Clear frequently used stickers list?"));
-			connect(box.get(), SIGNAL(confirmed()), this, SLOT(onClearStickers()));
-			Ui::showLayer(box.release());
-			break;
 		} else if (
 			qsl("debugmode").startsWith(str) ||
 			qsl("testmode").startsWith(str) ||
 			qsl("loadlang").startsWith(str) ||
-			qsl("clearstickers").startsWith(str) ||
 			qsl("moderate").startsWith(str) ||
 			qsl("debugfiles").startsWith(str) ||
 			qsl("workmode").startsWith(str) ||
@@ -1236,7 +1231,7 @@ void SettingsInner::onUpdatePhoto() {
 	saveError();
 
 	QStringList imgExtensions(cImgExtensions());
-	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;All files (*.*)"));
+	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;") + filedialogAllFilesFilter());
 
 	QImage img;
 	QString file;
@@ -1265,24 +1260,6 @@ void SettingsInner::onUpdatePhoto() {
 void SettingsInner::onShowSessions() {
 	SessionsBox *box = new SessionsBox();
 	Ui::showLayer(box);
-}
-
-void SettingsInner::onClearStickers() {
-	auto &recent(cGetRecentStickers());
-	if (!recent.isEmpty()) {
-		recent.clear();
-		Local::writeUserSettings();
-	}
-	auto &sets(Global::RefStickerSets());
-	auto it = sets.find(Stickers::CustomSetId);
-	if (it != sets.cend()) {
-		sets.erase(it);
-		Local::writeStickers();
-	}
-	if (auto m = App::main()) {
-		emit m->stickersUpdated();
-	}
-	Ui::hideLayer();
 }
 
 void SettingsInner::onSwitchModerateMode() {
@@ -1665,7 +1642,7 @@ void SettingsInner::onBackFromGallery() {
 
 void SettingsInner::onBackFromFile() {
 	QStringList imgExtensions(cImgExtensions());
-	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;All files (*.*)"));
+	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;") + filedialogAllFilesFilter());
 
 	QImage img;
 	QString file;
@@ -1753,7 +1730,7 @@ void SettingsInner::updateChatBackground() {
 		p.setRenderHint(QPainter::SmoothPixmapTransform);
 		p.drawPixmap(0, 0, st::setBackgroundSize, st::setBackgroundSize, pix, sx, sy, s, s);
 	}
-	_background = QPixmap::fromImage(back);
+	_background = App::pixmapFromImageInPlace(std_::move(back));
 	_background.setDevicePixelRatio(cRetinaFactor());
 	_needBackgroundUpdate = false;
 

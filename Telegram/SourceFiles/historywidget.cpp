@@ -33,6 +33,7 @@ Copyright (c) 2014-2016 John Preston, https://desktop.telegram.org
 #include "data/data_drafts.h"
 #include "history/history_service_layout.h"
 #include "profile/profile_members_widget.h"
+#include "core/click_handler_types.h"
 #include "lang.h"
 #include "application.h"
 #include "mainwidget.h"
@@ -40,7 +41,7 @@ Copyright (c) 2014-2016 John Preston, https://desktop.telegram.org
 #include "passcodewidget.h"
 #include "mainwindow.h"
 #include "fileuploader.h"
-#include "audio.h"
+#include "media/media_audio.h"
 #include "localstorage.h"
 #include "apiwrap.h"
 #include "window/top_bar_widget.h"
@@ -1333,7 +1334,8 @@ void HistoryInner::saveContextImage() {
 	if (!photo || !photo->date || !photo->loaded()) return;
 
 	QString file;
-	if (filedialogGetSaveFile(file, lang(lng_save_photo), qsl("JPEG Image (*.jpg);;All files (*.*)"), filedialogDefaultName(qsl("photo"), qsl(".jpg")))) {
+	auto filter = qsl("JPEG Image (*.jpg);;") + filedialogAllFilesFilter();
+	if (filedialogGetSaveFile(file, lang(lng_save_photo), filter, filedialogDefaultName(qsl("photo"), qsl(".jpg")))) {
 		if (!file.isEmpty()) {
 			photo->full->pix().toImage().save(file, "JPG");
 		}
@@ -1471,15 +1473,15 @@ void HistoryInner::keyPressEvent(QKeyEvent *e) {
 		_widget->onListEscapePressed();
 	} else if (e == QKeySequence::Copy && !_selected.isEmpty()) {
 		copySelectedText();
+#ifdef Q_OS_MAC
+	} else if (e->key() == Qt::Key_E && e->modifiers().testFlag(Qt::ControlModifier)) {
+		setToClipboard(getSelectedText(), QClipboard::FindBuffer);
+#endif // Q_OS_MAC
 	} else if (e == QKeySequence::Delete) {
 		int32 selectedForForward, selectedForDelete;
 		getSelectionState(selectedForForward, selectedForDelete);
 		if (!_selected.isEmpty() && selectedForDelete == selectedForForward) {
 			_widget->onDeleteSelected();
-		}
-	} else if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
-		if (_selected.isEmpty()) {
-			_widget->onListEnterPressed();
 		}
 	} else {
 		e->ignore();
@@ -2139,7 +2141,7 @@ int HistoryInner::itemTop(const HistoryItem *item) const { // -1 if should not b
 }
 
 void HistoryInner::notifyIsBotChanged() {
-	BotInfo *newinfo = (_history && _history->peer->isUser()) ? _history->peer->asUser()->botInfo : nullptr;
+	BotInfo *newinfo = (_history && _history->peer->isUser()) ? _history->peer->asUser()->botInfo.get() : nullptr;
 	if ((!newinfo && !_botAbout) || (newinfo && _botAbout && _botAbout->info == newinfo)) {
 		return;
 	}
@@ -3493,7 +3495,7 @@ void HistoryWidget::onRecordError() {
 }
 
 void HistoryWidget::onRecordDone(QByteArray result, VoiceWaveform waveform, qint32 samples) {
-	if (!_peer) return;
+	if (!_peer || result.isEmpty()) return;
 
 	App::wnd()->activateWindow();
 	int32 duration = samples / AudioVoiceMsgFrequency;
@@ -3519,12 +3521,23 @@ void HistoryWidget::onRecordUpdate(quint16 level, qint32 samples) {
 }
 
 void HistoryWidget::updateStickers() {
-	if (!Global::LastStickersUpdate() || getms(true) >= Global::LastStickersUpdate() + StickersUpdateTimeout) {
+	auto now = getms(true);
+	if (!Global::LastStickersUpdate() || now >= Global::LastStickersUpdate() + StickersUpdateTimeout) {
 		if (!_stickersUpdateRequest) {
 			_stickersUpdateRequest = MTP::send(MTPmessages_GetAllStickers(MTP_int(Local::countStickersHash(true))), rpcDone(&HistoryWidget::stickersGot), rpcFail(&HistoryWidget::stickersFailed));
 		}
 	}
-	if (!cLastSavedGifsUpdate() || getms(true) >= cLastSavedGifsUpdate() + StickersUpdateTimeout) {
+	if (!Global::LastRecentStickersUpdate() || now >= Global::LastRecentStickersUpdate() + StickersUpdateTimeout) {
+		if (!_recentStickersUpdateRequest) {
+			_recentStickersUpdateRequest = MTP::send(MTPmessages_GetRecentStickers(MTP_int(Local::countRecentStickersHash())), rpcDone(&HistoryWidget::recentStickersGot), rpcFail(&HistoryWidget::recentStickersFailed));
+		}
+	}
+	if (!Global::LastFeaturedStickersUpdate() || now >= Global::LastFeaturedStickersUpdate() + StickersUpdateTimeout) {
+		if (!_featuredStickersUpdateRequest) {
+			_featuredStickersUpdateRequest = MTP::send(MTPmessages_GetFeaturedStickers(MTP_int(Local::countFeaturedStickersHash())), rpcDone(&HistoryWidget::featuredStickersGot), rpcFail(&HistoryWidget::featuredStickersFailed));
+		}
+	}
+	if (!cLastSavedGifsUpdate() || now >= cLastSavedGifsUpdate() + StickersUpdateTimeout) {
 		if (!_savedGifsUpdateRequest) {
 			_savedGifsUpdateRequest = MTP::send(MTPmessages_GetSavedGifs(MTP_int(Local::countSavedGifsHash())), rpcDone(&HistoryWidget::savedGifsGot), rpcFail(&HistoryWidget::savedGifsFailed));
 		}
@@ -3612,24 +3625,33 @@ void HistoryWidget::notify_clipStopperHidden(ClipStopperType type) {
 	if (_list) _list->update();
 }
 
-void HistoryWidget::cmd_search() {
-	if (!inFocusChain() || !_peer) return;
+bool HistoryWidget::cmd_search() {
+	if (!inFocusChain() || !_peer) return false;
 
 	App::main()->searchInPeer(_peer);
+	return true;
 }
 
-void HistoryWidget::cmd_next_chat() {
+bool HistoryWidget::cmd_next_chat() {
 	PeerData *p = 0;
 	MsgId m = 0;
 	App::main()->peerAfter(_peer, qMax(_showAtMsgId, 0), p, m);
-	if (p) Ui::showPeerHistory(p, m);
+	if (p) {
+		Ui::showPeerHistory(p, m);
+		return true;
+	}
+	return false;
 }
 
-void HistoryWidget::cmd_previous_chat() {
+bool HistoryWidget::cmd_previous_chat() {
 	PeerData *p = 0;
 	MsgId m = 0;
 	App::main()->peerBefore(_peer, qMax(_showAtMsgId, 0), p, m);
-	if (p) Ui::showPeerHistory(p, m);
+	if (p) {
+		Ui::showPeerHistory(p, m);
+		return true;
+	}
+	return false;
 }
 
 void HistoryWidget::stickersGot(const MTPmessages_AllStickers &stickers) {
@@ -3641,36 +3663,23 @@ void HistoryWidget::stickersGot(const MTPmessages_AllStickers &stickers) {
 
 	const auto &d_sets(d.vsets.c_vector().v);
 
-	Stickers::Order &setsOrder(Global::RefStickerSetsOrder());
+	auto &setsOrder = Global::RefStickerSetsOrder();
 	setsOrder.clear();
 
-	Stickers::Sets &sets(Global::RefStickerSets());
+	auto &sets = Global::RefStickerSets();
 	QMap<uint64, uint64> setsToRequest;
-	for (auto i = sets.begin(), e = sets.end(); i != e; ++i) {
-		i->access = 0; // mark for removing
+	for (auto &set : sets) {
+		if (!(set.flags & MTPDstickerSet::Flag::f_archived)) {
+			set.flags &= ~MTPDstickerSet::Flag::f_installed; // mark for removing
+		}
 	}
-	for (int i = 0, l = d_sets.size(); i != l; ++i) {
-		if (d_sets.at(i).type() == mtpc_stickerSet) {
-			const auto &set(d_sets.at(i).c_stickerSet());
-			auto it = sets.find(set.vid.v);
-			QString title = stickerSetTitle(set);
-			if (it == sets.cend()) {
-				it = sets.insert(set.vid.v, Stickers::Set(set.vid.v, set.vaccess_hash.v, title, qs(set.vshort_name), set.vcount.v, set.vhash.v, set.vflags.v | MTPDstickerSet_ClientFlag::f_not_loaded));
-			} else {
-				it->access = set.vaccess_hash.v;
-				it->title = title;
-				it->shortName = qs(set.vshort_name);
-				it->flags = set.vflags.v;
-				if (it->count != set.vcount.v || it->hash != set.vhash.v || it->emoji.isEmpty()) {
-					it->count = set.vcount.v;
-					it->hash = set.vhash.v;
-					it->flags |= MTPDstickerSet_ClientFlag::f_not_loaded; // need to request this set
-				}
-			}
-			if (!(it->flags & MTPDstickerSet::Flag::f_disabled) || (it->flags & MTPDstickerSet::Flag::f_official)) {
-				setsOrder.push_back(set.vid.v);
-				if (it->stickers.isEmpty() || (it->flags & MTPDstickerSet_ClientFlag::f_not_loaded)) {
-					setsToRequest.insert(set.vid.v, set.vaccess_hash.v);
+	for_const (auto &setData, d_sets) {
+		if (setData.type() == mtpc_stickerSet) {
+			auto set = Stickers::feedSet(setData.c_stickerSet());
+			if (!(set->flags & MTPDstickerSet::Flag::f_archived) || (set->flags & MTPDstickerSet::Flag::f_official)) {
+				setsOrder.push_back(set->id);
+				if (set->stickers.isEmpty() || (set->flags & MTPDstickerSet_ClientFlag::f_not_loaded)) {
+					setsToRequest.insert(set->id, set->access);
 				}
 			}
 		}
@@ -3678,9 +3687,11 @@ void HistoryWidget::stickersGot(const MTPmessages_AllStickers &stickers) {
 	bool writeRecent = false;
 	RecentStickerPack &recent(cGetRecentStickers());
 	for (Stickers::Sets::iterator it = sets.begin(), e = sets.end(); it != e;) {
-		if (it->id == Stickers::CustomSetId || it->access != 0) {
-			++it;
-		} else {
+		bool installed = (it->flags & MTPDstickerSet::Flag::f_installed);
+		bool featured = (it->flags & MTPDstickerSet_ClientFlag::f_featured);
+		bool special = (it->flags & MTPDstickerSet_ClientFlag::f_special);
+		bool archived = (it->flags & MTPDstickerSet::Flag::f_archived);
+		if (!installed) { // remove not mine sets from recent stickers
 			for (RecentStickerPack::iterator i = recent.begin(); i != recent.cend();) {
 				if (it->stickers.indexOf(i->first) >= 0) {
 					i = recent.erase(i);
@@ -3689,6 +3700,10 @@ void HistoryWidget::stickersGot(const MTPmessages_AllStickers &stickers) {
 					++i;
 				}
 			}
+		}
+		if (installed || featured || special || archived) {
+			++it;
+		} else {
 			it = sets.erase(it);
 		}
 	}
@@ -3704,7 +3719,7 @@ void HistoryWidget::stickersGot(const MTPmessages_AllStickers &stickers) {
 		App::api()->requestStickerSets();
 	}
 
-	Local::writeStickers();
+	Local::writeInstalledStickers();
 	if (writeRecent) Local::writeUserSettings();
 
 	if (App::main()) emit App::main()->stickersUpdated();
@@ -3717,6 +3732,193 @@ bool HistoryWidget::stickersFailed(const RPCError &error) {
 
 	Global::SetLastStickersUpdate(getms(true));
 	_stickersUpdateRequest = 0;
+	return true;
+}
+
+void HistoryWidget::recentStickersGot(const MTPmessages_RecentStickers &stickers) {
+	Global::SetLastRecentStickersUpdate(getms(true));
+	_recentStickersUpdateRequest = 0;
+
+	if (stickers.type() != mtpc_messages_recentStickers) return;
+	auto &d = stickers.c_messages_recentStickers();
+
+	auto &sets = Global::RefStickerSets();
+	auto it = sets.find(Stickers::CloudRecentSetId);
+
+	auto &d_docs = d.vstickers.c_vector().v;
+	if (d_docs.isEmpty()) {
+		if (it != sets.cend()) {
+			sets.erase(it);
+		}
+	} else {
+		if (it == sets.cend()) {
+			it = sets.insert(Stickers::CloudRecentSetId, Stickers::Set(Stickers::CloudRecentSetId, 0, lang(lng_recent_stickers), QString(), 0, 0, qFlags(MTPDstickerSet_ClientFlag::f_special)));
+		} else {
+			it->title = lang(lng_recent_stickers);
+		}
+		it->hash = d.vhash.v;
+
+		auto custom = sets.find(Stickers::CustomSetId);
+
+		StickerPack pack;
+		pack.reserve(d_docs.size());
+		for (int32 i = 0, l = d_docs.size(); i != l; ++i) {
+			DocumentData *doc = App::feedDocument(d_docs.at(i));
+			if (!doc || !doc->sticker()) continue;
+
+			pack.push_back(doc);
+			if (custom != sets.cend()) {
+				int32 index = custom->stickers.indexOf(doc);
+				if (index >= 0) {
+					custom->stickers.removeAt(index);
+				}
+			}
+		}
+		if (custom != sets.cend() && custom->stickers.isEmpty()) {
+			sets.erase(custom);
+			custom = sets.end();
+		}
+
+		bool writeRecent = false;
+		RecentStickerPack &recent(cGetRecentStickers());
+		for (RecentStickerPack::iterator i = recent.begin(); i != recent.cend();) {
+			if (it->stickers.indexOf(i->first) >= 0 && pack.indexOf(i->first) < 0) {
+				i = recent.erase(i);
+				writeRecent = true;
+			} else {
+				++i;
+			}
+		}
+
+		if (pack.isEmpty()) {
+			sets.erase(it);
+		} else {
+			it->stickers = pack;
+			it->emoji.clear();
+		}
+
+		if (writeRecent) {
+			Local::writeUserSettings();
+		}
+	}
+
+	if (Local::countRecentStickersHash() != d.vhash.v) {
+		LOG(("API Error: received stickers hash %1 while counted hash is %2").arg(d.vhash.v).arg(Local::countRecentStickersHash()));
+	}
+
+	Local::writeRecentStickers();
+
+	if (App::main()) emit App::main()->stickersUpdated();
+}
+
+bool HistoryWidget::recentStickersFailed(const RPCError &error) {
+	if (MTP::isDefaultHandledError(error)) return false;
+
+	LOG(("App Fail: Failed to get recent stickers!"));
+
+	Global::SetLastRecentStickersUpdate(getms(true));
+	_recentStickersUpdateRequest = 0;
+	return true;
+}
+
+void HistoryWidget::featuredStickersGot(const MTPmessages_FeaturedStickers &stickers) {
+	Global::SetLastFeaturedStickersUpdate(getms(true));
+	_featuredStickersUpdateRequest = 0;
+
+	if (stickers.type() != mtpc_messages_featuredStickers) return;
+	auto &d(stickers.c_messages_featuredStickers());
+
+	OrderedSet<uint64> unread;
+	for_const (auto &unreadSetId, d.vunread.c_vector().v) {
+		unread.insert(unreadSetId.v);
+	}
+
+	auto &d_sets(d.vsets.c_vector().v);
+
+	auto &setsOrder = Global::RefFeaturedStickerSetsOrder();
+	setsOrder.clear();
+
+	auto &sets = Global::RefStickerSets();
+	QMap<uint64, uint64> setsToRequest;
+	for (auto &set : sets) {
+		set.flags &= ~MTPDstickerSet_ClientFlag::f_featured; // mark for removing
+	}
+	for (int i = 0, l = d_sets.size(); i != l; ++i) {
+		if (d_sets.at(i).type() == mtpc_stickerSetCovered && d_sets.at(i).c_stickerSetCovered().vset.type() == mtpc_stickerSet) {
+			const auto &set(d_sets.at(i).c_stickerSetCovered().vset.c_stickerSet());
+			auto it = sets.find(set.vid.v);
+			QString title = stickerSetTitle(set);
+			if (it == sets.cend()) {
+				auto setClientFlags = MTPDstickerSet_ClientFlag::f_featured | MTPDstickerSet_ClientFlag::f_not_loaded;
+				if (unread.contains(set.vid.v)) {
+					setClientFlags |= MTPDstickerSet_ClientFlag::f_unread;
+				}
+				it = sets.insert(set.vid.v, Stickers::Set(set.vid.v, set.vaccess_hash.v, title, qs(set.vshort_name), set.vcount.v, set.vhash.v, set.vflags.v | setClientFlags));
+			} else {
+				it->access = set.vaccess_hash.v;
+				it->title = title;
+				it->shortName = qs(set.vshort_name);
+				auto clientFlags = it->flags & (MTPDstickerSet_ClientFlag::f_featured | MTPDstickerSet_ClientFlag::f_unread | MTPDstickerSet_ClientFlag::f_not_loaded | MTPDstickerSet_ClientFlag::f_special);
+				it->flags = set.vflags.v | clientFlags;
+				it->flags |= MTPDstickerSet_ClientFlag::f_featured;
+				if (unread.contains(it->id)) {
+					it->flags |= MTPDstickerSet_ClientFlag::f_unread;
+				} else {
+					it->flags &= ~MTPDstickerSet_ClientFlag::f_unread;
+				}
+				if (it->count != set.vcount.v || it->hash != set.vhash.v || it->emoji.isEmpty()) {
+					it->count = set.vcount.v;
+					it->hash = set.vhash.v;
+					it->flags |= MTPDstickerSet_ClientFlag::f_not_loaded; // need to request this set
+				}
+			}
+			setsOrder.push_back(set.vid.v);
+			if (it->stickers.isEmpty() || (it->flags & MTPDstickerSet_ClientFlag::f_not_loaded)) {
+				setsToRequest.insert(set.vid.v, set.vaccess_hash.v);
+			}
+		}
+	}
+
+	int unreadCount = 0;
+	for (auto it = sets.begin(), e = sets.end(); it != e;) {
+		bool installed = (it->flags & MTPDstickerSet::Flag::f_installed);
+		bool featured = (it->flags & MTPDstickerSet_ClientFlag::f_featured);
+		bool special = (it->flags & MTPDstickerSet_ClientFlag::f_special);
+		bool archived = (it->flags & MTPDstickerSet::Flag::f_archived);
+		if (installed || featured || special || archived) {
+			if (featured && (it->flags & MTPDstickerSet_ClientFlag::f_unread)) {
+				++unreadCount;
+			}
+			++it;
+		} else {
+			it = sets.erase(it);
+		}
+	}
+	Global::SetFeaturedStickerSetsUnreadCount(unreadCount);
+
+	if (Local::countFeaturedStickersHash() != d.vhash.v) {
+		LOG(("API Error: received featured stickers hash %1 while counted hash is %2").arg(d.vhash.v).arg(Local::countFeaturedStickersHash()));
+	}
+
+	if (!setsToRequest.isEmpty() && App::api()) {
+		for (QMap<uint64, uint64>::const_iterator i = setsToRequest.cbegin(), e = setsToRequest.cend(); i != e; ++i) {
+			App::api()->scheduleStickerSetRequest(i.key(), i.value());
+		}
+		App::api()->requestStickerSets();
+	}
+
+	Local::writeFeaturedStickers();
+
+	if (App::main()) emit App::main()->stickersUpdated();
+}
+
+bool HistoryWidget::featuredStickersFailed(const RPCError &error) {
+	if (MTP::isDefaultHandledError(error)) return false;
+
+	LOG(("App Fail: Failed to get featured stickers!"));
+
+	Global::SetLastFeaturedStickersUpdate(getms(true));
+	_featuredStickersUpdateRequest = 0;
 	return true;
 }
 
@@ -4562,7 +4764,7 @@ bool HistoryWidget::messagesFailed(const RPCError &error, mtpRequestId requestId
 
 	if (error.type() == qstr("CHANNEL_PRIVATE") || error.type() == qstr("CHANNEL_PUBLIC_GROUP_NA") || error.type() == qstr("USER_BANNED_IN_CHANNEL")) {
 		PeerData *was = _peer;
-		Ui::showChatsList();
+		App::main()->showBackFromStack();
 		Ui::showLayer(new InformBox(lang((was && was->isMegagroup()) ? lng_group_not_accessible : lng_channel_not_accessible)));
 		return true;
 	}
@@ -4574,7 +4776,7 @@ bool HistoryWidget::messagesFailed(const RPCError &error, mtpRequestId requestId
 		_preloadDownRequest = 0;
 	} else if (_firstLoadRequest == requestId) {
 		_firstLoadRequest = 0;
-		Ui::showChatsList();
+		App::main()->showBackFromStack();
 	} else if (_delayedShowAtRequest == requestId) {
 		_delayedShowAtRequest = 0;
 	}
@@ -5373,7 +5575,7 @@ void HistoryWidget::onPhotoSelect() {
 
 	QStringList photoExtensions(cPhotoExtensions());
 	QStringList imgExtensions(cImgExtensions());
-	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;Photo files (*") + photoExtensions.join(qsl(" *")) + qsl(");;All files (*.*)"));
+	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;Photo files (*") + photoExtensions.join(qsl(" *")) + qsl(");;") + filedialogAllFilesFilter());
 
 	QStringList files;
 	QByteArray content;
@@ -5401,7 +5603,7 @@ void HistoryWidget::onDocumentSelect() {
 
 	QStringList photoExtensions(cPhotoExtensions());
 	QStringList imgExtensions(cImgExtensions());
-	QString filter(qsl("All files (*.*);;Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;Photo files (*") + photoExtensions.join(qsl(" *")) + qsl(")"));
+	QString filter(filedialogAllFilesFilter() + qsl(";;Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;Photo files (*") + photoExtensions.join(qsl(" *")) + qsl(")"));
 
 	QStringList files;
 	QByteArray content;
@@ -5592,6 +5794,8 @@ void HistoryWidget::botCallbackDone(BotCallbackInfo info, const MTPmessages_BotC
 				toast.text = qs(answerData.vmessage);
 				Ui::Toast::Show(App::wnd(), toast);
 			}
+		} else if (answerData.has_url()) {
+			UrlClickHandler(qs(answerData.vurl)).onClick(Qt::LeftButton);
 		}
 	}
 }
@@ -5917,8 +6121,9 @@ void HistoryWidget::onKbToggle(bool manual) {
 		} else {
 			if (_history) {
 				_history->clearLastKeyboard();
+			} else {
+				updateBotKeyboard();
 			}
-			updateBotKeyboard();
 		}
 	} else if (!_keyboard.hasMarkup() && _keyboard.forceReply()) {
 		_kbHide.hide();
@@ -6026,7 +6231,7 @@ void HistoryWidget::paintTopBar(Painter &p, float64 over, int32 decreaseWidth) {
 
 	if (!_history) return;
 
-	int32 increaseLeft = Adaptive::OneColumn() ? (st::topBarForwardPadding.right() - st::topBarForwardPadding.left()) : 0;
+	int32 increaseLeft = (Adaptive::OneColumn() || !App::main()->stackIsEmpty()) ? (st::topBarForwardPadding.right() - st::topBarForwardPadding.left()) : 0;
 	decreaseWidth += increaseLeft;
 	QRect rectForName(st::topBarForwardPadding.left() + increaseLeft, st::topBarForwardPadding.top(), width() - decreaseWidth - st::topBarForwardPadding.left() - st::topBarForwardPadding.right(), st::msgNameFont->height);
 	p.setFont(st::dialogsTextFont);
@@ -6041,7 +6246,7 @@ void HistoryWidget::paintTopBar(Painter &p, float64 over, int32 decreaseWidth) {
 	p.setPen(st::dialogsNameFg);
 	_peer->dialogName().drawElided(p, rectForName.left(), rectForName.top(), rectForName.width());
 
-	if (Adaptive::OneColumn()) {
+	if (Adaptive::OneColumn() || !App::main()->stackIsEmpty()) {
 		p.setOpacity(st::topBarForwardAlpha + (1 - st::topBarForwardAlpha) * over);
 		p.drawSprite(QPoint((st::topBarForwardPadding.right() - st::topBarBackwardImg.pxWidth()) / 2, (st::topBarHeight - st::topBarBackwardImg.pxHeight()) / 2), st::topBarBackwardImg);
 	} else {
@@ -6051,7 +6256,7 @@ void HistoryWidget::paintTopBar(Painter &p, float64 over, int32 decreaseWidth) {
 }
 
 QRect HistoryWidget::getMembersShowAreaGeometry() const {
-	int increaseLeft = Adaptive::OneColumn() ? (st::topBarForwardPadding.right() - st::topBarForwardPadding.left()) : 0;
+	int increaseLeft = (Adaptive::OneColumn() || !App::main()->stackIsEmpty()) ? (st::topBarForwardPadding.right() - st::topBarForwardPadding.left()) : 0;
 	int membersTextLeft = st::topBarForwardPadding.left() + increaseLeft;
 	int membersTextTop = st::topBarHeight - st::topBarForwardPadding.bottom() - st::dialogsTextFont->height;
 	int membersTextWidth = _titlePeerTextWidth;
@@ -6097,8 +6302,8 @@ void HistoryWidget::onMembersDropdownHidden() {
 }
 
 void HistoryWidget::topBarClick() {
-	if (Adaptive::OneColumn()) {
-		Ui::showChatsList();
+	if (Adaptive::OneColumn() || !App::main()->stackIsEmpty()) {
+		App::main()->showBackFromStack();
 	} else {
 		if (_history) Ui::showPeerProfile(_peer);
 	}
@@ -6650,10 +6855,10 @@ void HistoryWidget::onReportSpamClear() {
 	if (_clearPeer->isUser()) {
 		App::main()->deleteConversation(_clearPeer);
 	} else if (_clearPeer->isChat()) {
-		Ui::showChatsList();
+		App::main()->showBackFromStack();
 		MTP::send(MTPmessages_DeleteChatUser(_clearPeer->asChat()->inputChat, App::self()->inputUser), App::main()->rpcDone(&MainWidget::deleteHistoryAfterLeave, _clearPeer), App::main()->rpcFail(&MainWidget::leaveChatFailed, _clearPeer));
 	} else if (_clearPeer->isChannel()) {
-		Ui::showChatsList();
+		App::main()->showBackFromStack();
 		if (_clearPeer->migrateFrom()) {
 			App::main()->deleteConversation(_clearPeer->migrateFrom());
 		}
@@ -7181,7 +7386,7 @@ void HistoryWidget::keyPressEvent(QKeyEvent *e) {
 	if (e->key() == Qt::Key_Escape) {
 		e->ignore();
 	} else if (e->key() == Qt::Key_Back) {
-		Ui::showChatsList();
+		App::main()->showBackFromStack();
 		emit cancelled();
 	} else if (e->key() == Qt::Key_PageDown) {
 		_scroll.keyPressEvent(e);
@@ -7202,6 +7407,8 @@ void HistoryWidget::keyPressEvent(QKeyEvent *e) {
 			}
 			_scroll.keyPressEvent(e);
 		}
+	} else if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
+		onListEnterPressed();
 	} else {
 		e->ignore();
 	}
@@ -7959,7 +8166,7 @@ void HistoryWidget::onCancel() {
 	} else if (!_fieldAutocomplete->isHidden()) {
 		_fieldAutocomplete->hideStart();
 	} else  {
-		Ui::showChatsList();
+		App::main()->showBackFromStack();
 		emit cancelled();
 	}
 }
@@ -7997,7 +8204,7 @@ void HistoryWidget::peerUpdated(PeerData *data) {
 		}
 		QString restriction = _peer->restrictionReason();
 		if (!restriction.isEmpty()) {
-			Ui::showChatsList();
+			App::main()->showBackFromStack();
 			Ui::showLayer(new InformBox(restriction));
 			return;
 		}
@@ -8264,7 +8471,7 @@ void HistoryWidget::drawField(Painter &p, const QRect &rect) {
 					ImagePtr replyPreview = drawMsgText->getMedia()->replyPreview();
 					if (!replyPreview->isNull()) {
 						QRect to(replyLeft, backy + st::msgReplyPadding.top(), st::msgReplyBarSize.height(), st::msgReplyBarSize.height());
-						p.drawPixmap(to.x(), to.y(), replyPreview->pixSingle(replyPreview->width() / cIntRetinaFactor(), replyPreview->height() / cIntRetinaFactor(), to.width(), to.height()));
+						p.drawPixmap(to.x(), to.y(), replyPreview->pixSingle(ImageRoundRadius::Small, replyPreview->width() / cIntRetinaFactor(), replyPreview->height() / cIntRetinaFactor(), to.width(), to.height()));
 					}
 					replyLeft += st::msgReplyBarSize.height() + st::msgReplyBarSkip - st::msgReplyBarSize.width() - st::msgReplyBarPos.x();
 				}
@@ -8425,7 +8632,7 @@ void HistoryWidget::drawPinnedBar(Painter &p) {
 			ImagePtr replyPreview = _pinnedBar->msg->getMedia()->replyPreview();
 			if (!replyPreview->isNull()) {
 				QRect to(left, st::msgReplyPadding.top(), st::msgReplyBarSize.height(), st::msgReplyBarSize.height());
-				p.drawPixmap(to.x(), to.y(), replyPreview->pixSingle(replyPreview->width() / cIntRetinaFactor(), replyPreview->height() / cIntRetinaFactor(), to.width(), to.height()));
+				p.drawPixmap(to.x(), to.y(), replyPreview->pixSingle(ImageRoundRadius::Small, replyPreview->width() / cIntRetinaFactor(), replyPreview->height() / cIntRetinaFactor(), to.width(), to.height()));
 			}
 			left += st::msgReplyBarSize.height() + st::msgReplyBarSkip - st::msgReplyBarSize.width() - st::msgReplyBarPos.x();
 		}
@@ -8521,7 +8728,7 @@ void HistoryWidget::paintEvent(QPaintEvent *e) {
 		style::font font(st::msgServiceFont);
 		int32 w = font->width(lang(lng_willbe_history)) + st::msgPadding.left() + st::msgPadding.right(), h = font->height + st::msgServicePadding.top() + st::msgServicePadding.bottom() + 2;
 		QRect tr((width() - w) / 2, (height() - _field.height() - 2 * st::sendPadding - h) / 2, w, h);
-		App::roundRect(p, tr, App::msgServiceBg(), ServiceCorners);
+		HistoryLayout::ServiceMessagePainter::paintBubble(p, tr.x(), tr.y(), tr.width(), tr.height());
 
 		p.setPen(st::msgServiceColor->p);
 		p.setFont(font->f);

@@ -212,8 +212,8 @@ void MainWindow::psUpdateCounter() {
 		int32 size = cRetina() ? 44 : 22;
 		_placeCounter(img, size, counter, bg, (dm && muted) ? st::counterMacInvColor : st::counterColor);
 		_placeCounter(imgsel, size, counter, st::white, st::counterMacInvColor);
-		icon.addPixmap(QPixmap::fromImage(img, Qt::ColorOnly));
-		icon.addPixmap(QPixmap::fromImage(imgsel, Qt::ColorOnly), QIcon::Selected);
+		icon.addPixmap(App::pixmapFromImageInPlace(std_::move(img)));
+		icon.addPixmap(App::pixmapFromImageInPlace(std_::move(imgsel)), QIcon::Selected);
 		trayIcon->setIcon(icon);
 	}
 }
@@ -484,12 +484,12 @@ void MainWindow::psNotifyShown(NotifyWindow *w) {
 }
 
 void MainWindow::psPlatformNotify(HistoryItem *item, int32 fwdCount) {
-	QString title = (!App::passcoded() && cNotifyView() <= dbinvShowName) ? item->history()->peer->name : qsl("Telegram Desktop");
-	QString subtitle = (!App::passcoded() && cNotifyView() <= dbinvShowName) ? item->notificationHeader() : QString();
-	QPixmap pix = (!App::passcoded() && cNotifyView() <= dbinvShowName) ? item->history()->peer->genUserpic(st::notifyMacPhotoSize) : QPixmap();
-	QString msg = (!App::passcoded() && cNotifyView() <= dbinvShowPreview) ? (fwdCount < 2 ? item->notificationText() : lng_forward_messages(lt_count, fwdCount)) : lang(lng_notification_preview);
+	QString title = (!App::passcoded() && cNotifyView() <= dbinvShowName && !Global::ScreenIsLocked()) ? item->history()->peer->name : qsl("Telegram Desktop");
+	QString subtitle = (!App::passcoded() && cNotifyView() <= dbinvShowName && !Global::ScreenIsLocked()) ? item->notificationHeader() : QString();
+	QPixmap pix = (!App::passcoded() && cNotifyView() <= dbinvShowName && !Global::ScreenIsLocked()) ? item->history()->peer->genUserpic(st::notifyMacPhotoSize) : QPixmap();
+	QString msg = (!App::passcoded() && cNotifyView() <= dbinvShowPreview && !Global::ScreenIsLocked()) ? (fwdCount < 2 ? item->notificationText() : lng_forward_messages(lt_count, fwdCount)) : lang(lng_notification_preview);
 
-	bool withReply = !App::passcoded() && (cNotifyView() <= dbinvShowPreview) && item->history()->peer->canWrite();
+	bool withReply = !App::passcoded() && (cNotifyView() <= dbinvShowPreview && !Global::ScreenIsLocked()) && item->history()->peer->canWrite();
 
 	_private.showNotify(item->history()->peer->id, item->id, pix, title, subtitle, msg, withReply);
 }

@@ -22,8 +22,14 @@ Copyright (c) 2014-2016 John Preston, https://desktop.telegram.org
 
 #include "mtproto/file_download.h"
 
+enum class ImageRoundRadius {
+	None,
+	Large,
+	Small,
+};
+
 QImage imageBlur(QImage img);
-void imageRound(QImage &img);
+void imageRound(QImage &img, ImageRoundRadius radius);
 
 inline uint32 packInt(int32 a) {
 	return (a < 0) ? uint32(int64(a) + 0x100000000LL) : uint32(a);
@@ -110,8 +116,9 @@ inline bool operator!=(const StorageImageLocation &a, const StorageImageLocation
 enum ImagePixOption {
 	ImagePixSmooth = 0x01,
 	ImagePixBlurred = 0x02,
-	ImagePixRounded = 0x04,
-	ImagePixCircled = 0x08,
+	ImagePixCircled = 0x04,
+	ImagePixRoundedLarge = 0x08,
+	ImagePixRoundedSmall = 0x10,
 };
 Q_DECLARE_FLAGS(ImagePixOptions, ImagePixOption);
 Q_DECLARE_OPERATORS_FOR_FLAGS(ImagePixOptions);
@@ -152,13 +159,13 @@ public:
 	}
 
 	const QPixmap &pix(int32 w = 0, int32 h = 0) const;
-	const QPixmap &pixRounded(int32 w = 0, int32 h = 0) const;
+	const QPixmap &pixRounded(ImageRoundRadius radius, int32 w = 0, int32 h = 0) const;
 	const QPixmap &pixCircled(int32 w = 0, int32 h = 0) const;
 	const QPixmap &pixBlurred(int32 w = 0, int32 h = 0) const;
 	const QPixmap &pixColored(const style::color &add, int32 w = 0, int32 h = 0) const;
 	const QPixmap &pixBlurredColored(const style::color &add, int32 w = 0, int32 h = 0) const;
-	const QPixmap &pixSingle(int32 w, int32 h, int32 outerw, int32 outerh) const;
-	const QPixmap &pixBlurredSingle(int32 w, int32 h, int32 outerw, int32 outerh) const;
+	const QPixmap &pixSingle(ImageRoundRadius radius, int32 w, int32 h, int32 outerw, int32 outerh) const;
+	const QPixmap &pixBlurredSingle(ImageRoundRadius radius, int32 w, int32 h, int32 outerw, int32 outerh) const;
 	QPixmap pixNoCache(int w = 0, int h = 0, ImagePixOptions options = 0, int outerw = -1, int outerh = -1) const;
 	QPixmap pixColoredNoCache(const style::color &add, int32 w = 0, int32 h = 0, bool smooth = false) const;
 	QPixmap pixBlurredColoredNoCache(const style::color &add, int32 w, int32 h = 0) const;
@@ -480,8 +487,13 @@ typedef QPair<uint64, uint64> MediaKey;
 inline uint64 mediaMix32To64(int32 a, int32 b) {
 	return (uint64(*reinterpret_cast<uint32*>(&a)) << 32) | uint64(*reinterpret_cast<uint32*>(&b));
 }
-inline MediaKey mediaKey(LocationType type, int32 dc, const uint64 &id) {
-	return MediaKey(mediaMix32To64(type, dc), id);
+// Old method, should not be used anymore.
+//inline MediaKey mediaKey(LocationType type, int32 dc, const uint64 &id) {
+//	return MediaKey(mediaMix32To64(type, dc), id);
+//}
+// New method when version was introduced, type is not relevant anymore (all files are Documents).
+inline MediaKey mediaKey(LocationType type, int32 dc, const uint64 &id, int32 version) {
+	return (version > 0) ? MediaKey(mediaMix32To64(version, dc), id) : MediaKey(mediaMix32To64(type, dc), id);
 }
 inline StorageKey mediaKey(const MTPDfileLocation &location) {
 	return storageKey(location.vdc_id.v, location.vvolume_id.v, location.vlocal_id.v);

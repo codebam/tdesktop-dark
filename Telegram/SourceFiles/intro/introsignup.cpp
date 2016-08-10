@@ -66,7 +66,7 @@ void IntroSignup::mousePressEvent(QMouseEvent *e) {
 	mouseMoveEvent(e);
 	if (QRect(_phLeft, _phTop, st::introPhotoSize, st::introPhotoSize).contains(e->pos())) {
 		QStringList imgExtensions(cImgExtensions());
-		QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;All files (*.*)"));
+		QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;") + filedialogAllFilesFilter());
 
 		QImage img;
 		QString file;
@@ -242,7 +242,7 @@ void IntroSignup::onCheckRequest() {
 
 void IntroSignup::onPhotoReady(const QImage &img) {
 	_photoBig = img;
-	_photoSmall = QPixmap::fromImage(img.scaled(st::introPhotoSize * cIntRetinaFactor(), st::introPhotoSize * cIntRetinaFactor(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation), Qt::ColorOnly);
+	_photoSmall = App::pixmapFromImageInPlace(img.scaled(st::introPhotoSize * cIntRetinaFactor(), st::introPhotoSize * cIntRetinaFactor(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 	_photoSmall.setDevicePixelRatio(cRetinaFactor());
 }
 

@@ -568,7 +568,7 @@ void GroupInfoBox::updateMaxHeight() {
 
 void GroupInfoBox::onPhoto() {
 	QStringList imgExtensions(cImgExtensions());
-	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;All files (*.*)"));
+	QString filter(qsl("Image files (*") + imgExtensions.join(qsl(" *")) + qsl(");;") + filedialogAllFilesFilter());
 
 	QImage img;
 	QString file;
@@ -595,7 +595,7 @@ void GroupInfoBox::onPhoto() {
 
 void GroupInfoBox::onPhotoReady(const QImage &img) {
 	_photoBig = img;
-	_photoSmall = QPixmap::fromImage(img.scaled(st::newGroupPhotoSize * cIntRetinaFactor(), st::newGroupPhotoSize * cIntRetinaFactor(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation), Qt::ColorOnly);
+	_photoSmall = App::pixmapFromImageInPlace(img.scaled(st::newGroupPhotoSize * cIntRetinaFactor(), st::newGroupPhotoSize * cIntRetinaFactor(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 	_photoSmall.setDevicePixelRatio(cRetinaFactor());
 }
 

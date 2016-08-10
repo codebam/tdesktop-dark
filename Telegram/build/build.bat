@@ -46,6 +46,11 @@ set "SignPath=%HomePath%\..\..\TelegramPrivate\Sign.bat"
 set "BinaryName=Telegram"
 set "DropboxSymbolsPath=X:\Telegram\symbols"
 
+if not exist %DropboxSymbolsPath% (
+  echo Dropbox path not found!
+  exit /b 1
+)
+
 if %BetaVersion% neq 0 (
   if exist %DeployPath%\ (
     echo Deploy folder for version %AppVersionStr% already exists!
@@ -94,7 +99,7 @@ echo Version %AppVersionStrFull% build successfull. Preparing..
 echo .
 
 echo Dumping debug symbols..
-call "%SolutionPath%\..\Libraries\breakpad\src\tools\windows\binaries\dump_syms.exe" "%ReleasePath%\%BinaryName%.pdb" > "%ReleasePath%\%BinaryName%.sym"
+call "%SolutionPath%\..\Libraries\breakpad\src\tools\windows\dump_syms\Release\dump_syms.exe" "%ReleasePath%\%BinaryName%.pdb" > "%ReleasePath%\%BinaryName%.sym"
 echo Done!
 
 set "PATH=%PATH%;C:\Program Files\7-Zip;C:\Program Files (x86)\Inno Setup 5"

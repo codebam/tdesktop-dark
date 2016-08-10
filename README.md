@@ -76,7 +76,7 @@ Before starting with the building, be sure to change the dir name from "tdesktop
   * SourceFiles/art/emoji_150x.png
   * SourceFiles/art/emoji_200x.png
   * SourceFiles/art/emoji_250x.png
-  * SourceFiles/gui/emoji_config.cpp
+  * SourceFiles/ui/emoji_config.cpp
 
 * ### codegen_style
 * ### codegen_numbers

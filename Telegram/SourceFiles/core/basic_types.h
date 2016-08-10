@@ -35,7 +35,7 @@ T *getPointerAndReset(T *&ptr) {
 
 template <typename T>
 T createAndSwap(T &value) {
-	T result;
+	T result = T();
 	std::swap(result, value);
 	return result;
 }
@@ -777,7 +777,7 @@ inline QString strMakeFromLetters(const uint32 *letters, int32 len) {
 	QString result;
 	result.reserve(len);
 	for (int32 i = 0; i < len; ++i) {
-		result.push_back(QChar((((letters[i] << 16) & 0xFF) >> 8) | (letters[i] & 0xFF)));
+		result.push_back(QChar((((letters[i] >> 16) & 0xFF) << 8) | (letters[i] & 0xFF)));
 	}
 	return result;
 }

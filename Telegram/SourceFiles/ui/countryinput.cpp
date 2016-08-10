@@ -106,7 +106,7 @@ CountryInput::CountryInput(QWidget *parent, const style::countryInput &st) : QWi
 		p.setBrush(_st.bgColor->b);
 		p.drawPolygon(trPoints, 3);
 	}
-	_arrow = QPixmap::fromImage(trImage, Qt::ColorOnly);
+	_arrow = App::pixmapFromImageInPlace(std_::move(trImage));
 	_inner = QRect(0, 0, _st.width, _st.height);
 	_arrowRect = QRect((st::inpIntroCountryCode.width - _arrow.width() - 1) / 2, _st.height, _arrow.width(), _arrow.height());
 }
@@ -117,7 +117,7 @@ void CountryInput::paintEvent(QPaintEvent *e) {
 	p.setRenderHint(QPainter::HighQualityAntialiasing);
 	p.setBrush(_st.bgColor);
 	p.setPen(Qt::NoPen);
-	p.drawRoundedRect(_inner, st::msgRadius, st::msgRadius);
+	p.drawRoundedRect(_inner, st::buttonRadius, st::buttonRadius);
 	p.setRenderHint(QPainter::HighQualityAntialiasing, false);
 
 	p.drawPixmap(_arrowRect.x(), _arrowRect.top(), _arrow);

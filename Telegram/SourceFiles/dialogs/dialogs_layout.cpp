@@ -33,11 +33,16 @@ namespace Layout {
 
 namespace {
 
+// Show all dates that are in the last 20 hours in time format.
+constexpr int kRecentlyInSeconds = 20 * 3600;
+
 void paintRowDate(Painter &p, const QDateTime &date, QRect &rectForName, bool active) {
 	QDateTime now(QDateTime::currentDateTime()), lastTime(date);
 	QDate nowDate(now.date()), lastDate(lastTime.date());
 	QString dt;
-	if (lastDate == nowDate) {
+	bool wasSameDay = (lastDate == nowDate);
+	bool wasRecently = qAbs(lastTime.secsTo(now)) < kRecentlyInSeconds;
+	if (wasSameDay || wasRecently) {
 		dt = lastTime.toString(cTimeFormat());
 	} else if (lastDate.year() == nowDate.year() && lastDate.weekNumber() == nowDate.weekNumber()) {
 		dt = langDayOfWeek(lastDate);
@@ -92,7 +97,7 @@ void paintRow(Painter &p, History *history, HistoryItem *item, Data::Draft *draf
 				auto draftText = lng_dialogs_text_with_from(lt_from_part, draftWrapped, lt_message, textClean(draft->textWithTags.text));
 				history->cloudDraftTextCache.setText(st::dialogsTextFont, draftText, _textDlgOptions);
 			}
-			textstyleSet(&(active ? st::dialogsTextStyleActive : st::dialogsTextStyleDraft));
+			textstyleSet(&(active ? st::dialogsTextStyleDraftActive : st::dialogsTextStyleDraft));
 			p.setFont(st::dialogsTextFont);
 			p.setPen(active ? st::dialogsTextFgActive : st::dialogsTextFg);
 			history->cloudDraftTextCache.drawElided(p, nameleft, texttop, namewidth, 1);
@@ -222,7 +227,7 @@ void paintUnreadCount(Painter &p, const QString &text, int x, int y, const Unrea
 
 	p.setFont(st.font);
 	p.setPen(st.active ? st::dialogsUnreadFgActive : st::dialogsUnreadFg);
-	p.drawText(unreadRectLeft + (unreadRectWidth - unreadWidth) / 2, unreadRectTop + st::dialogsUnreadTop + st.font->ascent, text);
+	p.drawText(unreadRectLeft + (unreadRectWidth - unreadWidth) / 2, unreadRectTop + (unreadRectHeight - st.font->height) / 2 + st.font->ascent, text);
 }
 
 void RowPainter::paint(Painter &p, const Row *row, int w, bool active, bool selected, bool onlyBackground) {
@@ -258,7 +263,7 @@ void RowPainter::paint(Painter &p, const Row *row, int w, bool active, bool sele
 			auto counter = QString::number(unreadCount);
 			auto mutedCounter = history->mute();
 			int unreadRight = w - st::dialogsPadding.x();
-			int unreadTop = texttop + st::dialogsTextFont->ascent - st::dialogsUnreadFont->ascent - st::dialogsUnreadTop;
+			int unreadTop = texttop + st::dialogsTextFont->ascent - st::dialogsUnreadFont->ascent - (st::dialogsUnreadHeight - st::dialogsUnreadFont->height) / 2;
 			int unreadWidth = 0;
 
 			UnreadBadgeStyle st;
@@ -297,7 +302,7 @@ void paintImportantSwitch(Painter &p, Mode current, int w, bool selected, bool o
 	int unreadTop = (st::dialogsImportantBarHeight - st::dialogsUnreadHeight) / 2;
 	bool mutedHidden = (current == Dialogs::Mode::Important);
 	QString text = mutedHidden ? qsl("Show all chats") : qsl("Hide muted chats");
-	int textBaseline = unreadTop + st::dialogsUnreadTop + st::dialogsUnreadFont->ascent;
+	int textBaseline = unreadTop + (st::dialogsUnreadHeight - st::dialogsUnreadFont->height) / 2 + st::dialogsUnreadFont->ascent;
 	p.drawText(st::dialogsPadding.x(), textBaseline, text);
 
 	if (mutedHidden) {

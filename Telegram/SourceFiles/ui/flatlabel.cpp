@@ -32,7 +32,7 @@ namespace {
 		Qt::LayoutDirectionAuto, // dir
 	};
 	TextParseOptions _labelMarkedOptions = {
-		TextParseMultiline | TextParseLinks | TextParseHashtags | TextParseMentions | TextParseBotCommands, // flags
+		TextParseMultiline | TextParseRichText | TextParseLinks | TextParseHashtags | TextParseMentions | TextParseBotCommands, // flags
 		0, // maxw
 		0, // maxh
 		Qt::LayoutDirectionAuto, // dir
@@ -304,6 +304,13 @@ void FlatLabel::keyPressEvent(QKeyEvent *e) {
 			onCopySelectedText();
 			e->accept();
 		}
+#ifdef Q_OS_MAC
+	} else if (e->key() == Qt::Key_E && e->modifiers().testFlag(Qt::ControlModifier)) {
+		auto selection = _selection.empty() ? (_contextMenu ? _savedSelection : _selection) : _selection;
+		if (!selection.empty()) {
+			QApplication::clipboard()->setText(_text.originalText(selection, _contextExpandLinksMode), QClipboard::FindBuffer);
+		}
+#endif // Q_OS_MAC
 	}
 }
 

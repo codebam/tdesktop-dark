@@ -27,8 +27,6 @@ class MainWindow;
 class MainWidget;
 class SettingsWidget;
 class ApiWrap;
-class Font;
-class Color;
 class FileUploader;
 
 #include "history.h"
@@ -39,7 +37,7 @@ typedef QHash<PhotoData*, HistoryItemsMap> PhotoItems;
 typedef QHash<DocumentData*, HistoryItemsMap> DocumentItems;
 typedef QHash<WebPageData*, HistoryItemsMap> WebPageItems;
 typedef QHash<int32, HistoryItemsMap> SharedContactItems;
-typedef QHash<ClipReader*, HistoryItem*> GifItems;
+typedef QHash<Media::Clip::Reader*, HistoryItem*> GifItems;
 
 typedef QHash<PhotoId, PhotoData*> PhotosData;
 typedef QHash<DocumentId, DocumentData*> DocumentsData;
@@ -67,7 +65,9 @@ namespace App {
 	bool onlineColorUse(UserData *user, TimeId now);
 	bool onlineColorUse(TimeId online, TimeId now);
 
+	UserData *feedUser(const MTPUser &user);
 	UserData *feedUsers(const MTPVector<MTPUser> &users); // returns last user
+	PeerData *feedChat(const MTPChat &chat);
 	PeerData *feedChats(const MTPVector<MTPChat> &chats); // returns last chat
 
 	void feedParticipants(const MTPChatParticipants &p, bool requestBotInfos, bool emitPeerUpdated = true);
@@ -151,7 +151,7 @@ namespace App {
 	PhotoData *photo(const PhotoId &photo);
 	PhotoData *photoSet(const PhotoId &photo, PhotoData *convert, const uint64 &access, int32 date, const ImagePtr &thumb, const ImagePtr &medium, const ImagePtr &full);
 	DocumentData *document(const DocumentId &document);
-	DocumentData *documentSet(const DocumentId &document, DocumentData *convert, const uint64 &access, int32 date, const QVector<MTPDocumentAttribute> &attributes, const QString &mime, const ImagePtr &thumb, int32 dc, int32 size, const StorageImageLocation &thumbLocation);
+	DocumentData *documentSet(const DocumentId &document, DocumentData *convert, const uint64 &access, int32 version, int32 date, const QVector<MTPDocumentAttribute> &attributes, const QString &mime, const ImagePtr &thumb, int32 dc, int32 size, const StorageImageLocation &thumbLocation);
 	WebPageData *webPage(const WebPageId &webPage);
 	WebPageData *webPageSet(const WebPageId &webPage, WebPageData *convert, const QString &, const QString &url, const QString &displayUrl, const QString &siteName, const QString &title, const QString &description, PhotoData *photo, DocumentData *doc, int32 duration, const QString &author, int32 pendingTill);
 	LocationData *location(const LocationCoords &coords);
@@ -257,8 +257,8 @@ namespace App {
 	const SharedContactItems &sharedContactItems();
 	QString phoneFromSharedContact(int32 userId);
 
-	void regGifItem(ClipReader *reader, HistoryItem *item);
-	void unregGifItem(ClipReader *reader);
+	void regGifItem(Media::Clip::Reader *reader, HistoryItem *item);
+	void unregGifItem(Media::Clip::Reader *reader);
 	void stopGifItems();
 
 	void regMuted(PeerData *peer, int32 changeIn);
@@ -271,7 +271,7 @@ namespace App {
 #endif
 	void setProxySettings(QTcpSocket &socket);
 
-	QImage **cornersMask();
+	QImage **cornersMask(ImageRoundRadius radius);
 	void roundRect(Painter &p, int32 x, int32 y, int32 w, int32 h, const style::color &bg, RoundCorners index, const style::color *sh = 0);
 	inline void roundRect(Painter &p, const QRect &rect, const style::color &bg, RoundCorners index, const style::color *sh = 0) {
 		return roundRect(p, rect.x(), rect.y(), rect.width(), rect.height(), bg, index, sh);
@@ -280,9 +280,9 @@ namespace App {
 	inline void roundShadow(Painter &p, const QRect &rect, const style::color &sh, RoundCorners index) {
 		return roundShadow(p, rect.x(), rect.y(), rect.width(), rect.height(), sh, index);
 	}
-	void roundRect(Painter &p, int32 x, int32 y, int32 w, int32 h, const style::color &bg);
-	inline void roundRect(Painter &p, const QRect &rect, const style::color &bg) {
-		return roundRect(p, rect.x(), rect.y(), rect.width(), rect.height(), bg);
+	void roundRect(Painter &p, int32 x, int32 y, int32 w, int32 h, const style::color &bg, ImageRoundRadius radius);
+	inline void roundRect(Painter &p, const QRect &rect, const style::color &bg, ImageRoundRadius radius) {
+		return roundRect(p, rect.x(), rect.y(), rect.width(), rect.height(), bg, radius);
 	}
 
 	void initBackground(int32 id = DefaultChatBackground, const QImage &p = QImage(), bool nowrite = false);
