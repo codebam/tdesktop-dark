@@ -71,8 +71,8 @@ Extract to **D:\TBuild\Libraries**
 
 * Open in VS2015 **D:\TBuild\Libraries\lzma\C\Util\LzmaLib\LzmaLib.dsw** > One-way upgrade – **OK**
 * For **Debug** and **Release** configurations
-  * LzmaLib Properties > General > Configuration Type = **Static library (.lib)** – **Apply**
-  * LzmaLib Properties > Librarian > General > Target Machine = **MachineX86 (/MACHINE:X86)** – **OK**
+  * Project > LzmaLib Properties > General > Configuration Type = **Static library (.lib)** – **Apply**
+  * Project > LzmaLib Properties > Librarian > General > Target Machine = **MachineX86 (/MACHINE:X86)** – **OK**
   * If you can't find **Librarian**, you forgot to click **Apply** after changing the Configuration Type.
 * For **Debug** configuration
   * LzmaLib Properties > C/C++ > General > Debug Information Format = **Program Database (/Zi)** - **OK**
@@ -90,9 +90,9 @@ Extract to **D:\\TBuild\\Libraries\\**
 * Open in VS2015 **D:\TBuild\Libraries\zlib-1.2.8\contrib\vstudio\vc11\zlibvc.sln** > One-way upgrade – **OK**
 * We are interested only in **zlibstat** project, but it depends on some custom pre-build step, so build all
 * For **Debug** configuration
-  * zlibstat Properties > C/C++ > Code Generation > Runtime Library = **Multi-threaded Debug (/MTd)** – **OK**
+  * Project > Properties > C/C++ > Code Generation > Runtime Library = **Multi-threaded Debug (/MTd)** – **OK**
 * For **Release** configuration
-  * zlibstat Properties > C/C++ > Code Generation > Runtime Library = **Multi-threaded (/MT)** – **OK**
+  * Project > Properties > C/C++ > Code Generation > Runtime Library = **Multi-threaded (/MT)** – **OK**
 * Build Solution for Debug configuration – only **zlibstat** project builds successfully
 * Build Solution for Release configuration – only **zlibstat** project builds successfully
 
@@ -158,7 +158,7 @@ Download [yasm for Win64](http://www.tortall.net/projects/yasm/releases/yasm-1.3
 
 Open **VS2015 x86 Native Tools Command Prompt.bat** (should be in **Start Menu > Programs > Visual Studio 2015** menu folder), go to **D:\\msys64\\** and launch **msys2_shell.bat**, there run
 
-    PATH="/c/Program Files (x86)/Microsoft Visual Studio 14.0/VC/BIN:$PATH"
+    PATH="/c/Program Files (x86)/Microsoft Visual Studio 14.0/VC/bin:$PATH"
 
     cd /d/TBuild/Libraries/ffmpeg
     pacman -Sy
