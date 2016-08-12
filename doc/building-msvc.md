@@ -161,7 +161,7 @@ Open **VS2015 x86 Native Tools Command Prompt.bat** (should be in **Start Menu >
     PATH="/c/Program Files (x86)/Microsoft Visual Studio 14.0/VC/bin:$PATH"
 
     cd /d/TBuild/Libraries/ffmpeg
-    pacman -Sy
+    pacman -Syu
     pacman -S msys/make
     pacman -S mingw64/mingw-w64-x86_64-opus
     pacman -S diffutils
