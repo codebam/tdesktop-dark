@@ -252,6 +252,7 @@ In Terminal go to **/Users/user/TBuild/Libraries** and run:
 
 * Launch Xcode, all projects will be taken from **/Users/user/TBuild/tdesktop/Telegram**
 * Open MetaEmoji.xcodeproj and build for Debug (Release optionally)
+* **Note:** if MetaEmoji fails to compile with `moc: Cannot create GeneratedFiles/Debug/*` run the command `mkdir -p GeneratedFiles/Debug` in **/Users/user/TBuild/tdesktop/Telegram**
 * Open MetaLang.xcodeproj and build for Debug (Release optionally)
 * Open Telegram.xcodeproj and build for Debug
 * Build Updater target as well, it is required for Telegram relaunch
